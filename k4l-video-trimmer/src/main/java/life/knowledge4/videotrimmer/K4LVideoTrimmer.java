@@ -25,61 +25,91 @@ package life.knowledge4.videotrimmer;
 
 import android.content.Context;
 import android.media.MediaMetadataRetriever;
-import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
-import android.support.annotation.NonNull;
 import android.util.AttributeSet;
-import android.util.Log;
 import android.view.GestureDetector;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 import android.widget.SeekBar;
 import android.widget.TextView;
-import android.widget.VideoView;
+import android.widget.Toast;
+
+import androidx.annotation.NonNull;
+
+import com.devbrackets.android.exomedia.listener.OnCompletionListener;
+import com.devbrackets.android.exomedia.listener.OnErrorListener;
+import com.devbrackets.android.exomedia.listener.OnPreparedListener;
+import com.devbrackets.android.exomedia.ui.widget.VideoView;
+
+import org.greenrobot.eventbus.EventBus;
+import org.greenrobot.eventbus.Subscribe;
+import org.greenrobot.eventbus.ThreadMode;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.lang.ref.WeakReference;
+import java.nio.channels.FileChannel;
+import java.text.DecimalFormat;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
+import life.knowledge4.videotrimmer.events.MediaDoneEvent;
+import life.knowledge4.videotrimmer.events.MediaErrorEvent;
+import life.knowledge4.videotrimmer.events.MediaProgressEvent;
 import life.knowledge4.videotrimmer.interfaces.OnK4LVideoListener;
 import life.knowledge4.videotrimmer.interfaces.OnProgressVideoListener;
+import life.knowledge4.videotrimmer.interfaces.OnQualityChooseListener;
 import life.knowledge4.videotrimmer.interfaces.OnRangeSeekBarListener;
 import life.knowledge4.videotrimmer.interfaces.OnTrimVideoListener;
+import life.knowledge4.videotrimmer.utils.AndroidUtilities;
 import life.knowledge4.videotrimmer.utils.BackgroundExecutor;
+import life.knowledge4.videotrimmer.utils.TranscodeVideoUtils;
 import life.knowledge4.videotrimmer.utils.TrimVideoUtils;
 import life.knowledge4.videotrimmer.utils.UiThreadExecutor;
 import life.knowledge4.videotrimmer.view.ProgressBarView;
+import life.knowledge4.videotrimmer.view.QualityChooseView;
 import life.knowledge4.videotrimmer.view.RangeSeekBarView;
 import life.knowledge4.videotrimmer.view.Thumb;
 import life.knowledge4.videotrimmer.view.TimeLineView;
+import life.knowledge4.videotrimmer.view.VideoTimelineView;
 
 import static life.knowledge4.videotrimmer.utils.TrimVideoUtils.stringForTime;
 
 public class K4LVideoTrimmer extends FrameLayout {
 
     private static final String TAG = K4LVideoTrimmer.class.getSimpleName();
-    private static final int MIN_TIME_FRAME = 1000;
+    private static final int MIN_TIME_FRAME = 200;
     private static final int SHOW_PROGRESS = 2;
+    private static final int MAX_FILE_SIZE = 1012;
+    private static final int MAX_FILE_SIZE_BEFORE_DECODE = 1512;
 
     private SeekBar mHolderTopView;
     private RangeSeekBarView mRangeSeekBarView;
-    private RelativeLayout mLinearVideo;
     private View mTimeInfoContainer;
     private VideoView mVideoView;
     private ImageView mPlayView;
+    private ImageView compressItem;
+    private ImageView muteItem;
+    private LinearLayout mControlWrapper;
     private TextView mTextSize;
     private TextView mTextTimeFrame;
     private TextView mTextTime;
     private TimeLineView mTimeLineView;
+    private VideoTimelineView videoTimelineView;
+    private QualityChooseView qualityChooseView;
 
     private ProgressBarView mVideoProgressIndicator;
     private Uri mSrc;
@@ -91,14 +121,22 @@ public class K4LVideoTrimmer extends FrameLayout {
     private OnTrimVideoListener mOnTrimVideoListener;
     private OnK4LVideoListener mOnK4LVideoListener;
 
-    private int mDuration = 0;
-    private int mTimeVideo = 0;
-    private int mStartPosition = 0;
-    private int mEndPosition = 0;
+    private long mDuration = 0;
+    private long mTimeVideo = 0;
+    private long mStartPosition = 0;
+    private long mEndPosition = 0;
 
     private long mOriginSizeFile;
     private boolean mResetSeekBar = true;
     private final MessageHandler mMessageHandler = new MessageHandler(this);
+    private int defaultVideoWidth;
+    private int defaultVideoHeight;
+    private int compressionsCount = 1;
+    private int selectedCompression = -1;
+    private float qualitySize = 1;
+    private boolean muteVideo = false;
+    private boolean needPrepared = true;
+    private Context mContext;
 
     public K4LVideoTrimmer(@NonNull Context context, AttributeSet attrs) {
         this(context, attrs, 0);
@@ -106,23 +144,36 @@ public class K4LVideoTrimmer extends FrameLayout {
 
     public K4LVideoTrimmer(@NonNull Context context, AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
-        init(context);
+        init(context.getApplicationContext());
     }
 
     private void init(Context context) {
-        LayoutInflater.from(context).inflate(R.layout.view_time_line, this, true);
+        if (isInEditMode()) {
+            return;
+        }
+
+        EventBus.getDefault().register(this);
+        mContext = context.getApplicationContext();
+
+        AndroidUtilities.checkDisplaySize(context);
+
+        LayoutInflater.from(context).inflate(R.layout.view_time_line_v2, this, true);
 
         mHolderTopView = ((SeekBar) findViewById(R.id.handlerTop));
         mVideoProgressIndicator = ((ProgressBarView) findViewById(R.id.timeVideoView));
         mRangeSeekBarView = ((RangeSeekBarView) findViewById(R.id.timeLineBar));
-        mLinearVideo = ((RelativeLayout) findViewById(R.id.layout_surface_view));
-        mVideoView = ((VideoView) findViewById(R.id.video_loader));
+        mVideoView = ((VideoView) findViewById(R.id.video_view));
         mPlayView = ((ImageView) findViewById(R.id.icon_video_play));
         mTimeInfoContainer = findViewById(R.id.timeText);
         mTextSize = ((TextView) findViewById(R.id.textSize));
         mTextTimeFrame = ((TextView) findViewById(R.id.textTimeSelection));
         mTextTime = ((TextView) findViewById(R.id.textTime));
         mTimeLineView = ((TimeLineView) findViewById(R.id.timeLineView));
+        videoTimelineView = ((VideoTimelineView) findViewById(R.id.videoTimelineView));
+        mControlWrapper = ((LinearLayout) findViewById(R.id.controlWrapper));
+        compressItem = ((ImageView) findViewById(R.id.compressItem));
+        muteItem = ((ImageView) findViewById(R.id.muteItem));
+        qualityChooseView = ((QualityChooseView) findViewById(R.id.qualityChooseView));
 
         setUpListeners();
         setUpMargins();
@@ -132,7 +183,7 @@ public class K4LVideoTrimmer extends FrameLayout {
         mListeners = new ArrayList<>();
         mListeners.add(new OnProgressVideoListener() {
             @Override
-            public void updateProgress(int time, int max, float scale) {
+            public void updateProgress(long time, long max, float scale) {
                 updateVideoProgress(time);
             }
         });
@@ -169,11 +220,11 @@ public class K4LVideoTrimmer extends FrameLayout {
                 }
         );
 
-        mVideoView.setOnErrorListener(new MediaPlayer.OnErrorListener() {
+        mVideoView.setOnErrorListener(new OnErrorListener() {
             @Override
-            public boolean onError(MediaPlayer mediaPlayer, int what, int extra) {
+            public boolean onError(Exception e) {
                 if (mOnTrimVideoListener != null)
-                    mOnTrimVideoListener.onError("Something went wrong reason : " + what);
+                    exceptionHandler();
                 return false;
             }
         });
@@ -226,19 +277,61 @@ public class K4LVideoTrimmer extends FrameLayout {
             }
         });
 
-        mVideoView.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
+        mVideoView.setOnPreparedListener(new OnPreparedListener() {
             @Override
-            public void onPrepared(MediaPlayer mp) {
-                onVideoPrepared(mp);
+            public void onPrepared() {
+                if (needPrepared) {
+                    onVideoPrepared();
+                } else {
+                    onClickVideoPlayPause();
+                }
             }
         });
 
-        mVideoView.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+        mVideoView.setOnCompletionListener(new OnCompletionListener() {
             @Override
-            public void onCompletion(MediaPlayer mp) {
+            public void onCompletion() {
                 onVideoCompleted();
             }
         });
+
+        muteItem.setOnClickListener(new OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                onMuteClick();
+            }
+        });
+
+        compressItem.setOnClickListener(new OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                if (qualityChooseView.isShown()) {
+                    qualityChooseView.setVisibility(GONE);
+                } else if (compressionsCount > 1) {
+                    qualityChooseView.setVisibility(VISIBLE);
+                }
+            }
+        });
+        qualityChooseView.setOnQualityChooseListener(new OnQualityChooseListener() {
+            @Override
+            public void selectedResolution(int selectedCompression) {
+                onQualityChoseChanges(selectedCompression);
+            }
+        });
+    }
+
+    private void onQualityChoseChanges(int selectedCompression) {
+        qualitySize = calcQualitySize(selectedCompression);
+        this.selectedCompression = selectedCompression;
+        setDefaultVideoResolution(selectedCompression);
+        setNewSize();
+    }
+
+    private float calcQualitySize(int selectedCompression) {
+        if (defaultVideoWidth * defaultVideoHeight > 0) {
+            return TranscodeVideoUtils.getResolutionX(selectedCompression, defaultVideoHeight, defaultVideoWidth) / (defaultVideoWidth * defaultVideoHeight);
+        }
+        return 1;
     }
 
     private void setUpMargins() {
@@ -258,10 +351,101 @@ public class K4LVideoTrimmer extends FrameLayout {
         mVideoProgressIndicator.setLayoutParams(lp);
     }
 
-    private void onSaveClicked() {
-        if (mStartPosition <= 0 && mEndPosition >= mDuration) {
+    private void onMuteClick() {
+        muteVideo = !muteVideo;
+        if (mVideoView != null) {
+            float volume = muteVideo ? 0.0f : 1.0f;
+            mVideoView.setVolume(volume);
+        }
+        if (muteVideo) {
+            muteItem.setImageResource(R.drawable.volume_off);
+        } else {
+            muteItem.setImageResource(R.drawable.volume_on);
+        }
+    }
+
+    private void getVideoResolution() throws NumberFormatException {
+        MediaMetadataRetriever mediaMetadataRetriever = new MediaMetadataRetriever();
+        mediaMetadataRetriever.setDataSource(getContext(), mSrc);
+        defaultVideoWidth = Integer.valueOf(mediaMetadataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH));
+        defaultVideoHeight = Integer.valueOf(mediaMetadataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT));
+        getResolutionType();
+    }
+
+    private void getResolutionType() {
+        if (defaultVideoWidth >= 1920 || defaultVideoHeight >= 1920) {
+            compressionsCount = 3;
+        } else if (defaultVideoWidth >= 1080 || defaultVideoHeight >= 1080) {
+            compressionsCount = 2;
+        } else if (defaultVideoWidth >= 720 || defaultVideoHeight >= 720) {
+            compressionsCount = 1;
+        } else {
+            compressionsCount = 1;
+        }
+    }
+
+    private void setDefaultVideoResolution(int compressionsCount) {
+        if (compressionsCount == 1) {
+            compressItem.setImageResource(R.drawable.video_480);
+        } else if (compressionsCount == 2) {
+            compressItem.setImageResource(R.drawable.video_720);
+        } else if (compressionsCount == 3) {
+            compressItem.setImageResource(R.drawable.video_1080);
+        }
+    }
+
+    private String getResolutionName() {
+        if (selectedCompression == 1) {
+            return "480p_";
+        } else if (selectedCompression == 2) {
+            return "720p_";
+        } else if (selectedCompression == 3) {
+            return "1080p_";
+        }
+        return "";
+    }
+
+    private void copyFileToDest(String destPath) {
+        try {
+            FileInputStream input = new FileInputStream(new File(mSrc.toString()));
+            FileOutputStream out = new FileOutputStream(destPath);
+            byte buf[] = new byte[1024];
+            do {
+                int numRead = input.read(buf);
+                if (numRead <= 0)
+                    break;
+                out.write(buf, 0, numRead);
+            } while (true);
+            try {
+                input.close();
+                out.close();
+            } catch (IOException ignore) {
+            }
+        } catch (IOException ignore) {
+        }
+        mOnTrimVideoListener.getResult(Uri.parse(destPath));
+    }
+
+    public void onSaveClicked() {
+        final boolean needTrim = !(mStartPosition <= 0 && mEndPosition >= mDuration) || muteVideo;
+        final boolean needCompression = !((selectedCompression == compressionsCount) || selectedCompression == -1);
+        final String destPath = getDestinationPath();
+
+        if (isFileOverSize()) {
             if (mOnTrimVideoListener != null)
-                mOnTrimVideoListener.getResult(mSrc);
+                mOnTrimVideoListener.cancelAction();
+            return;
+        }
+
+        //notify that video trimming started
+        if (mOnTrimVideoListener != null) {
+            mOnTrimVideoListener.onTrimStarted();
+            mOnTrimVideoListener.onProgress(0.0f);
+        }
+
+        if (!needTrim && !needCompression) {
+            if (mOnTrimVideoListener != null)
+                copyFileToDest(destPath);
         } else {
             mPlayView.setVisibility(View.VISIBLE);
             mVideoView.pause();
@@ -281,22 +465,126 @@ public class K4LVideoTrimmer extends FrameLayout {
                 }
             }
 
-            //notify that video trimming started
-            if (mOnTrimVideoListener != null)
-                mOnTrimVideoListener.onTrimStarted();
+            BackgroundExecutor.execute(
+                    new BackgroundExecutor.Task("", 0L, "") {
+                        @Override
+                        public void execute() {
+                            mOnTrimVideoListener.onProgress(0.01f);
+                            try {
+                                if (needTrim) {
+                                    TrimVideoUtils.startTrim(file, destPath, mStartPosition, mEndPosition, muteVideo, mOnTrimVideoListener);
+                                }
 
+                                mOnTrimVideoListener.onProgress(0.13f);
+
+                                if (needCompression) {
+                                    File destFile = new File(destPath);
+                                    long length = destFile.length();
+
+                                    Uri mediaUri;
+                                    if (needTrim && length > 30000) {
+                                        mediaUri = Uri.fromFile(destFile);
+                                    } else {
+                                        mediaUri = mSrc;
+                                    }
+                                    String destPath = getTranscodeDestinationPath();
+
+                                    TranscodeVideoUtils.getDefaultFileInfo(mContext, mediaUri, destPath);
+                                    TranscodeVideoUtils.setResolutionAndQuality(selectedCompression);
+                                    TranscodeVideoUtils.startTranscode(mContext);
+                                } else {
+                                    if (new File(destPath).length() > 30000) {
+                                        mOnTrimVideoListener.getResult(Uri.parse(destPath));
+                                    } else {
+                                        copyFile(new File(mSrc.getPath()), new File(destPath));
+                                        mOnTrimVideoListener.getResult(Uri.parse(destPath));
+                                    }
+                                }
+                            } catch (Exception e) {
+                                try {
+                                    copyFile(new File(mSrc.getPath()), new File(destPath));
+                                } catch (IOException ignore) {
+                                }
+                                mOnTrimVideoListener.getResult(Uri.parse(destPath));
+                            }
+                        }
+                    }
+            );
+        }
+    }
+
+    public static void copyFile(File sourceFile, File destFile) throws IOException {
+        if (!destFile.getParentFile().exists())
+            destFile.getParentFile().mkdirs();
+
+        if (destFile.delete() || !destFile.exists()) {
+            destFile.createNewFile();
+        }
+
+        FileChannel source = null;
+        FileChannel destination = null;
+
+        try {
+            source = new FileInputStream(sourceFile).getChannel();
+            destination = new FileOutputStream(destFile).getChannel();
+            destination.transferFrom(source, 0, source.size());
+        } finally {
+            if (source != null) {
+                source.close();
+            }
+            if (destination != null) {
+                destination.close();
+            }
+        }
+    }
+
+    public static File removeSuffixFile(File sourceFile, File destFile) throws IOException {
+        sourceFile.delete();
+        if (sourceFile.exists()) {
+            sourceFile.getCanonicalFile().delete();
+        }
+        destFile.renameTo(sourceFile);
+        return sourceFile;
+    }
+
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    public void onMediaDoneEvent(MediaDoneEvent event) {
+        mOnTrimVideoListener.onProgress(1.0f);
+        try {
+            File file = removeSuffixFile(new File(getDestinationPath()), new File(getTranscodeDestinationPath()));
+            Uri uri = Uri.fromFile(file);
+            mOnTrimVideoListener.getResult(uri);
+        } catch (IOException ignore) {
+            mOnTrimVideoListener.getResult(Uri.parse(getDestinationPath()));
+        }
+    }
+
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    public void onMediaErrorEvent(MediaErrorEvent event) {
+        exceptionHandler();
+    }
+
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    public void onMediaProgressEvent(MediaProgressEvent event) {
+        if (event.getProgress() > 0.13f) mOnTrimVideoListener.onProgress(event.getProgress());
+    }
+
+    private void exceptionHandler() {
+        if (new File(getDestinationPath()).length() > 30000) {
+            mOnTrimVideoListener.getResult(Uri.parse(getDestinationPath()));
+        } else {
             BackgroundExecutor.execute(
                     new BackgroundExecutor.Task("", 0L, "") {
                         @Override
                         public void execute() {
                             try {
-                                TrimVideoUtils.startTrim(file, getDestinationPath(), mStartPosition, mEndPosition, mOnTrimVideoListener);
-                            } catch (final Throwable e) {
-                                Thread.getDefaultUncaughtExceptionHandler().uncaughtException(Thread.currentThread(), e);
+                                copyFile(new File(mSrc.getPath()), new File(getDestinationPath()));
+                                mOnTrimVideoListener.getResult(Uri.parse(getDestinationPath()));
+                            } catch (IOException e) {
+                                mOnTrimVideoListener.cancelAction();
                             }
                         }
-                    }
-            );
+                    });
         }
     }
 
@@ -318,25 +606,41 @@ public class K4LVideoTrimmer extends FrameLayout {
         }
     }
 
-    private void onCancelClicked() {
+    public void onCancelClicked() {
         mVideoView.stopPlayback();
         if (mOnTrimVideoListener != null) {
             mOnTrimVideoListener.cancelAction();
         }
+        TranscodeVideoUtils.stopTranscode();
     }
 
     private String getDestinationPath() {
         if (mFinalPath == null) {
+            final String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
+            final String fileName = "MP4_" + timeStamp + ".mp4";
             File folder = Environment.getExternalStorageDirectory();
-            mFinalPath = folder.getPath() + File.separator;
-            Log.d(TAG, "Using default path " + mFinalPath);
+            mFinalPath = folder.getPath() + File.separator + fileName;
         }
         return mFinalPath;
     }
 
+    private String getTranscodeDestinationPath() {
+        if (mFinalPath == null) {
+            final String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
+            final String fileName = "MP4_" + getResolutionName() + timeStamp + ".mp4";
+            File folder = Environment.getExternalStorageDirectory();
+            return folder.getPath() + File.separator + fileName;
+        } else {
+            File originalFile = new File(mFinalPath);
+            String name = getResolutionName() + originalFile.getName();
+            File transcodeFile = new File(mFinalPath.substring(0, mFinalPath.indexOf(originalFile.getName())) + name);
+            return transcodeFile.getPath();
+        }
+    }
+
     private void onPlayerIndicatorSeekChanged(int progress, boolean fromUser) {
 
-        int duration = (int) ((mDuration * progress) / 1000L);
+        long duration = ((mDuration * progress) / 1000L);
 
         if (fromUser) {
             if (duration < mStartPosition) {
@@ -362,32 +666,13 @@ public class K4LVideoTrimmer extends FrameLayout {
         mVideoView.pause();
         mPlayView.setVisibility(View.VISIBLE);
 
-        int duration = (int) ((mDuration * seekBar.getProgress()) / 1000L);
+        long duration = ((mDuration * seekBar.getProgress()) / 1000);
         mVideoView.seekTo(duration);
         setTimeVideo(duration);
         notifyProgressUpdate(false);
     }
 
-    private void onVideoPrepared(@NonNull MediaPlayer mp) {
-        // Adjust the size of the video
-        // so it fits on the screen
-        int videoWidth = mp.getVideoWidth();
-        int videoHeight = mp.getVideoHeight();
-        float videoProportion = (float) videoWidth / (float) videoHeight;
-        int screenWidth = mLinearVideo.getWidth();
-        int screenHeight = mLinearVideo.getHeight();
-        float screenProportion = (float) screenWidth / (float) screenHeight;
-        ViewGroup.LayoutParams lp = mVideoView.getLayoutParams();
-
-        if (videoProportion > screenProportion) {
-            lp.width = screenWidth;
-            lp.height = (int) ((float) screenWidth / videoProportion);
-        } else {
-            lp.width = (int) (videoProportion * (float) screenHeight);
-            lp.height = screenHeight;
-        }
-        mVideoView.setLayoutParams(lp);
-
+    private void onVideoPrepared() {
         mPlayView.setVisibility(View.VISIBLE);
 
         mDuration = mVideoView.getDuration();
@@ -399,6 +684,18 @@ public class K4LVideoTrimmer extends FrameLayout {
         if (mOnK4LVideoListener != null) {
             mOnK4LVideoListener.onVideoPrepared();
         }
+        try {
+            getVideoResolution();
+        } catch (IllegalArgumentException e) {
+            try {
+                copyFile(new File(mSrc.getPath()), new File(getDestinationPath()));
+            } catch (IOException ignore) {
+            }
+            mOnTrimVideoListener.getResult(Uri.parse(getDestinationPath()));
+            return;
+        }
+        setDefaultVideoResolution(compressionsCount);
+        qualityChooseView.setOriginalCompression(compressionsCount);
     }
 
     private void setSeekBarPosition() {
@@ -427,20 +724,75 @@ public class K4LVideoTrimmer extends FrameLayout {
         mTextTimeFrame.setText(String.format("%s %s - %s %s", stringForTime(mStartPosition), seconds, stringForTime(mEndPosition), seconds));
     }
 
-    private void setTimeVideo(int position) {
+    private void setTimeVideo(long position) {
         String seconds = getContext().getString(R.string.short_seconds);
         mTextTime.setText(String.format("%s %s", stringForTime(position), seconds));
+    }
+
+    private void setNewSize() {
+        long fileSizeInKB = (long) ((mOriginSizeFile / 1024) * calcNewFileSizeRatio());
+
+        if (fileSizeInKB > 1000) {
+            double fileSizeInMB = (float) fileSizeInKB / 1024f;
+            if (fileSizeInMB < MAX_FILE_SIZE) {
+                mTextSize.setText(String.format("~%s %s", new DecimalFormat("##.##").format(fileSizeInMB), getContext().getString(R.string.megabyte)));
+            } else {
+                mTextSize.setText(String.format("%s%s", String.format("~%s %s! ", new DecimalFormat("##.##").format(fileSizeInMB), getContext().getString(R.string.megabyte)), getContext().getString(R.string.size_file_overflow)));
+            }
+        } else {
+            mTextSize.setText(String.format("~%s %s", fileSizeInKB, getContext().getString(R.string.kilobyte)));
+        }
+    }
+
+    private boolean isFileOverSize() {
+        long fileSizeInKB = (mOriginSizeFile / 1024);
+        long fileSizeInKBAfterDecode = (long) ((mOriginSizeFile / 1024) * calcNewFileSizeRatio());
+
+        if (fileSizeInKB > 1000) {
+            double fileSizeInMB = (float) fileSizeInKB / 1024f;
+            double fileSizeInMBAfterDecode = (float) fileSizeInKBAfterDecode / 1024f;
+            if (fileSizeInMB < MAX_FILE_SIZE) {
+                return false;
+            } else {
+                if (fileSizeInMB < MAX_FILE_SIZE_BEFORE_DECODE && fileSizeInMBAfterDecode < MAX_FILE_SIZE) {
+                    return false;
+                }
+                if (fileSizeInMB >= MAX_FILE_SIZE_BEFORE_DECODE) {
+                    mTextSize.setText(String.format("%s%s", String.format("~%s %s! ", new DecimalFormat("##.##").format(fileSizeInMB),
+                            getContext().getString(R.string.megabyte)), getContext().getString(R.string.size_file_overflow_original)));
+                }
+                return true;
+            }
+        } else {
+            return false;
+        }
+    }
+
+    private float calcNewFileSizeRatio() {
+        if (mDuration == 0) return 0;
+        float newFileSizeRatio = (float) (mEndPosition - mStartPosition) / mDuration;
+        if (newFileSizeRatio < 1.0f) {
+            newFileSizeRatio += ((1 - newFileSizeRatio) * 0.24f);
+        }
+        if (selectedCompression != compressionsCount && selectedCompression != -1) {
+            if (compressionsCount > 3) {
+                newFileSizeRatio *= (qualitySize * 0.285);
+            } else {
+                newFileSizeRatio *= (qualitySize * 0.85);
+            }
+        }
+        return newFileSizeRatio;
     }
 
     private void onSeekThumbs(int index, float value) {
         switch (index) {
             case Thumb.LEFT: {
-                mStartPosition = (int) ((mDuration * value) / 100L);
+                mStartPosition = (long) ((mDuration * value) / 100L);
                 mVideoView.seekTo(mStartPosition);
                 break;
             }
             case Thumb.RIGHT: {
-                mEndPosition = (int) ((mDuration * value) / 100L);
+                mEndPosition = (long) ((mDuration * value) / 100L);
                 break;
             }
         }
@@ -457,13 +809,18 @@ public class K4LVideoTrimmer extends FrameLayout {
     }
 
     private void onVideoCompleted() {
+        needPrepared = false;
+        mVideoView.restart();
         mVideoView.seekTo(mStartPosition);
+        setProgressBarPosition(mStartPosition);
+        setTimeFrames();
+        mResetSeekBar = true;
     }
 
     private void notifyProgressUpdate(boolean all) {
         if (mDuration == 0) return;
 
-        int position = mVideoView.getCurrentPosition();
+        long position = mVideoView.getCurrentPosition();
         if (all) {
             for (OnProgressVideoListener item : mListeners) {
                 item.updateProgress(position, mDuration, ((position * 100) / mDuration));
@@ -473,7 +830,7 @@ public class K4LVideoTrimmer extends FrameLayout {
         }
     }
 
-    private void updateVideoProgress(int time) {
+    private void updateVideoProgress(long time) {
         if (mVideoView == null) {
             return;
         }
@@ -493,11 +850,38 @@ public class K4LVideoTrimmer extends FrameLayout {
         setTimeVideo(time);
     }
 
-    private void setProgressBarPosition(int position) {
+    private void setProgressBarPosition(long position) {
         if (mDuration > 0) {
             long pos = 1000L * position / mDuration;
             mHolderTopView.setProgress((int) pos);
         }
+    }
+
+    public boolean isOriginalFileOverSize() {
+        long fileSizeInKB = (mOriginSizeFile / 1024);
+        if (fileSizeInKB > 1000) {
+            double fileSizeInMB = (float) fileSizeInKB / 1024f;
+            if (fileSizeInMB > MAX_FILE_SIZE_BEFORE_DECODE) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public void showControlButton(boolean show) {
+        mControlWrapper.setVisibility(show ? VISIBLE : GONE);
+    }
+
+    public void setCompressItemVisibility(int visibility) {
+        compressItem.setVisibility(visibility);
+    }
+
+    public void disableCompressItem() {
+        compressItem.setOnClickListener(null);
+    }
+
+    public void setCompressItemAlpha(float alpha) {
+        compressItem.setAlpha(alpha);
     }
 
     /**
@@ -539,7 +923,7 @@ public class K4LVideoTrimmer extends FrameLayout {
     @SuppressWarnings("unused")
     public void setDestinationPath(final String finalPath) {
         mFinalPath = finalPath;
-        Log.d(TAG, "Setting custom path " + mFinalPath);
+        // Log.d(TAG, "Setting custom path " + mFinalPath);
     }
 
     /**
@@ -548,6 +932,9 @@ public class K4LVideoTrimmer extends FrameLayout {
     public void destroy() {
         BackgroundExecutor.cancelAll("", true);
         UiThreadExecutor.cancelAll("");
+        mOnTrimVideoListener = null;
+        mOnK4LVideoListener = null;
+        EventBus.getDefault().unregister(this);
     }
 
     /**
@@ -578,7 +965,18 @@ public class K4LVideoTrimmer extends FrameLayout {
 
             if (fileSizeInKB > 1000) {
                 long fileSizeInMB = fileSizeInKB / 1024;
-                mTextSize.setText(String.format("%s %s", fileSizeInMB, getContext().getString(R.string.megabyte)));
+                if (fileSizeInMB < MAX_FILE_SIZE) {
+                    mTextSize.setText(String.format("~%s %s", new DecimalFormat("##.##").format(fileSizeInMB), getContext().getString(R.string.megabyte)));
+                } else {
+                    mTextSize.setText(String.format("%s%s", String.format("~%s %s! ", new DecimalFormat("##.##").format(fileSizeInMB), getContext().getString(R.string.megabyte)), getContext().getString(R.string.size_file_overflow)));
+                }
+                if (fileSizeInMB > MAX_FILE_SIZE_BEFORE_DECODE) {
+                    Toast.makeText(mContext, R.string.size_file_overflow_original, Toast.LENGTH_SHORT).show();
+                    if (mOnTrimVideoListener != null) {
+                        mOnTrimVideoListener.cancelAction();
+                    }
+                    return;
+                }
             } else {
                 mTextSize.setText(String.format("%s %s", fileSizeInKB, getContext().getString(R.string.kilobyte)));
             }
@@ -588,6 +986,8 @@ public class K4LVideoTrimmer extends FrameLayout {
         mVideoView.requestFocus();
 
         mTimeLineView.setVideo(mSrc);
+
+        setVideoTimelineView();
     }
 
     private static class MessageHandler extends Handler {
@@ -611,5 +1011,32 @@ public class K4LVideoTrimmer extends FrameLayout {
                 sendEmptyMessageDelayed(0, 10);
             }
         }
+    }
+
+    private void setVideoTimelineView() {
+        videoTimelineView.setVideoPath(mSrc.getPath());
+        videoTimelineView.setDelegate(new VideoTimelineView.VideoTimelineViewDelegate() {
+            @Override
+            public void onLeftProgressChanged(float progress) {
+                onSeekThumbs(Thumb.LEFT, progress * 100);
+                setNewSize();
+            }
+
+            @Override
+            public void onRifhtProgressChanged(float progress) {
+                onSeekThumbs(Thumb.RIGHT, progress * 100);
+                setNewSize();
+            }
+
+            @Override
+            public void didStartDragging() {
+
+            }
+
+            @Override
+            public void didStopDragging() {
+
+            }
+        });
     }
 }

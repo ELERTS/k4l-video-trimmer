@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cancel">Cancel</string>
+    <string name="kilobyte">KB</string>
+    <string name="megabyte">MB</string>
+    <string name="save">Сохранить</string>
+    <string name="short_seconds">сек</string>
+    <string name="size_file_overflow">Превышен допустимый размер</string>
+    <string name="size_file_overflow_original">Превышен допустимый размер исходного файла</string>
+</resources>

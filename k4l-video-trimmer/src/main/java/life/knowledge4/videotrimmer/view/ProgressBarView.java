@@ -27,8 +27,8 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Rect;
-import android.support.annotation.NonNull;
-import android.support.v4.content.ContextCompat;
+import androidx.annotation.NonNull;
+import androidx.core.content.ContextCompat;
 import android.util.AttributeSet;
 import android.view.View;
 
@@ -49,6 +49,7 @@ public class ProgressBarView extends View implements OnRangeSeekBarListener, OnP
 
     public ProgressBarView(@NonNull Context context, AttributeSet attrs) {
         this(context, attrs, 0);
+        init();
     }
 
     public ProgressBarView(@NonNull Context context, AttributeSet attrs, int defStyleAttr) {
@@ -139,7 +140,7 @@ public class ProgressBarView extends View implements OnRangeSeekBarListener, OnP
     }
 
     @Override
-    public void updateProgress(int time, int max, float scale) {
+    public void updateProgress(long time, long max, float scale) {
 
         if (scale == 0) {
             mProgressRect = new Rect(0, mBackgroundRect.top, 0, mBackgroundRect.bottom);

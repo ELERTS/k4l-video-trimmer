@@ -4,4 +4,6 @@
     <string name="short_seconds">sec</string>
     <string name="megabyte">MB</string>
     <string name="kilobyte">KB</string>
+    <string name="size_file_overflow">Exceeded the allowed size</string>
+    <string name="size_file_overflow_original">Exceeded the allowed size original file</string>
 </resources>

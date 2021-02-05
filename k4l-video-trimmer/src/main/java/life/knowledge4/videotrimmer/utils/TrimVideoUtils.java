@@ -23,9 +23,7 @@
  */
 package life.knowledge4.videotrimmer.utils;
 
-import android.net.Uri;
-import android.support.annotation.NonNull;
-import android.util.Log;
+import androidx.annotation.NonNull;
 
 import com.coremedia.iso.boxes.Container;
 import com.googlecode.mp4parser.FileDataSourceViaHeapImpl;
@@ -40,13 +38,10 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
-import java.text.SimpleDateFormat;
 import java.util.Arrays;
-import java.util.Date;
 import java.util.Formatter;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Locale;
 
 import life.knowledge4.videotrimmer.interfaces.OnTrimVideoListener;
 
@@ -54,29 +49,29 @@ public class TrimVideoUtils {
 
     private static final String TAG = TrimVideoUtils.class.getSimpleName();
 
-    public static void startTrim(@NonNull File src, @NonNull String dst, long startMs, long endMs, @NonNull OnTrimVideoListener callback) throws IOException {
-        final String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
-        final String fileName = "MP4_" + timeStamp + ".mp4";
-        final String filePath = dst + fileName;
+    public static void startTrim(@NonNull File src, @NonNull String dst, long startMs, long endMs, boolean muteVideo, @NonNull OnTrimVideoListener callback) throws IOException {
+      /*  final String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
+        final String fileName = "MP4_" + "timeStamp" + ".mp4";
+        final String filePath = dst + fileName;*/
 
-        File file = new File(filePath);
-        file.getParentFile().mkdirs();
-        Log.d(TAG, "Generated file path " + filePath);
-        genVideoUsingMp4Parser(src, file, startMs, endMs, callback);
+        File file = new File(dst);
+        // file.getParentFile().mkdirs();
+        //Log.d(TAG, "Generated file path " + filePath);
+        genVideoUsingMp4Parser(src, file, startMs, endMs, muteVideo, callback);
     }
 
-    private static void genVideoUsingMp4Parser(@NonNull File src, @NonNull File dst, long startMs, long endMs, @NonNull OnTrimVideoListener callback) throws IOException {
+    private static void genVideoUsingMp4Parser(@NonNull File src, @NonNull File dst, long startMs, long endMs, boolean muteVideo, @NonNull OnTrimVideoListener callback) throws IOException {
         // NOTE: Switched to using FileDataSourceViaHeapImpl since it does not use memory mapping (VM).
         // Otherwise we get OOM with large movie files.
+        callback.onProgress(0.01f);
         Movie movie = MovieCreator.build(new FileDataSourceViaHeapImpl(src.getAbsolutePath()));
 
         List<Track> tracks = movie.getTracks();
         movie.setTracks(new LinkedList<Track>());
         // remove all tracks we will create new tracks from the old
 
-        double startTime1 = startMs / 1000;
-        double endTime1 = endMs / 1000;
-
+        double startTime1 = (double) startMs / 1000;
+        double endTime1 = (double) endMs / 1000;
         boolean timeCorrected = false;
 
         // Here we try to find a track that has sync samples. Since we can only start decoding
@@ -96,6 +91,7 @@ public class TrimVideoUtils {
                 timeCorrected = true;
             }
         }
+        callback.onProgress(0.05f);
 
         for (Track track : tracks) {
             long currentSample = 0;
@@ -104,9 +100,10 @@ public class TrimVideoUtils {
             long startSample1 = -1;
             long endSample1 = -1;
 
+            if (muteVideo && track.getHandler().contains("soun")) continue;
+
             for (int i = 0; i < track.getSampleDurations().length; i++) {
                 long delta = track.getSampleDurations()[i];
-
 
                 if (currentTime > lastTime && currentTime <= startTime1) {
                     // current sample is still before the new starttime
@@ -122,10 +119,11 @@ public class TrimVideoUtils {
             }
             movie.addTrack(new AppendTrack(new CroppedTrack(track, startSample1, endSample1)));
         }
+        callback.onProgress(0.09f);
 
         dst.getParentFile().mkdirs();
 
-        if (!dst.exists()) {
+        if (dst.delete() || !dst.exists()) {
             dst.createNewFile();
         }
 
@@ -137,8 +135,9 @@ public class TrimVideoUtils {
 
         fc.close();
         fos.close();
-        if (callback != null)
-            callback.getResult(Uri.parse(dst.toString()));
+        callback.onProgress(0.12f);
+       /* if (callback != null)
+            callback.getResult(Uri.parse(dst.toString()));*/
     }
 
     private static double correctTimeToSyncSample(@NonNull Track track, double cutHere, boolean next) {
@@ -170,8 +169,8 @@ public class TrimVideoUtils {
         return timeOfSyncSamples[timeOfSyncSamples.length - 1];
     }
 
-    public static String stringForTime(int timeMs) {
-        int totalSeconds = timeMs / 1000;
+    public static String stringForTime(long timeMs) {
+        int totalSeconds = (int) timeMs / 1000;
 
         int seconds = totalSeconds % 60;
         int minutes = (totalSeconds / 60) % 60;
