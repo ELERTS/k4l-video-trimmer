@@ -90,6 +90,11 @@ public class VideoTimelineView  extends View {
             invalidate();
         }
     }
+    public void setProgress(float left, float right){
+        progressLeft = left;
+        progressRight = right;
+        invalidate();
+    }
 
     public void setRoundFrames(boolean value) {
         isRoundFrames = value;

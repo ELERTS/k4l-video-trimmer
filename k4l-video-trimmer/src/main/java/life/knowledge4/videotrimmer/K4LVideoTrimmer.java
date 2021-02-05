@@ -678,6 +678,8 @@ public class K4LVideoTrimmer extends FrameLayout {
         mDuration = mVideoView.getDuration();
         setSeekBarPosition();
 
+        videoTimelineView.setProgress((float)mStartPosition / mDuration, (float) mEndPosition / mDuration);
+
         setTimeFrames();
         setTimeVideo(0);
 
@@ -700,7 +702,7 @@ public class K4LVideoTrimmer extends FrameLayout {
 
     private void setSeekBarPosition() {
 
-        if (mDuration >= mMaxDuration) {
+        if (mDuration >= mMaxDuration && mMaxDuration != 0) {
             mStartPosition = mDuration / 2 - mMaxDuration / 2;
             mEndPosition = mDuration / 2 + mMaxDuration / 2;
 
