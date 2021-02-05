@@ -34,6 +34,7 @@ import android.view.GestureDetector;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
+import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -116,6 +117,7 @@ public class K4LVideoTrimmer extends FrameLayout {
     private String mFinalPath;
 
     private int mMaxDuration;
+    private int mMaxFileSize;
     private List<OnProgressVideoListener> mListeners;
 
     private OnTrimVideoListener mOnTrimVideoListener;
@@ -680,6 +682,10 @@ public class K4LVideoTrimmer extends FrameLayout {
 
         videoTimelineView.setProgress((float)mStartPosition / mDuration, (float) mEndPosition / mDuration);
 
+        //By default show compression for larger videos
+        if (compressionsCount > 1) {
+            qualityChooseView.setVisibility(VISIBLE);
+        }
         setTimeFrames();
         setTimeVideo(0);
 
@@ -731,13 +737,33 @@ public class K4LVideoTrimmer extends FrameLayout {
         mTextTime.setText(String.format("%s %s", stringForTime(position), seconds));
     }
 
+    private void canSaveVideo(Boolean canSave){
+        Button saveButton = findViewById(R.id.btSave);
+        if(canSave){
+            mTextSize.setTextColor(getContext().getResources().getColor(R.color.size_warning));
+            saveButton.setTextColor(getContext().getResources().getColor(android.R.color.darker_gray));
+            saveButton.setEnabled(false);
+            saveButton.setClickable(false);
+        } else {
+            mTextSize.setTextColor(getContext().getResources().getColor(android.R.color.white));
+            saveButton.setTextColor(getContext().getResources().getColor(android.R.color.white));
+            saveButton.setEnabled(true);
+            saveButton.setClickable(true);
+        }
+    }
+
     private void setNewSize() {
         long fileSizeInKB = (long) ((mOriginSizeFile / 1024) * calcNewFileSizeRatio());
+        canSaveVideo(fileSizeInKB / 1024f > mMaxFileSize);
 
         if (fileSizeInKB > 1000) {
             double fileSizeInMB = (float) fileSizeInKB / 1024f;
             if (fileSizeInMB < MAX_FILE_SIZE) {
-                mTextSize.setText(String.format("~%s %s", new DecimalFormat("##.##").format(fileSizeInMB), getContext().getString(R.string.megabyte)));
+                if(mMaxFileSize != 0 ) {
+                    mTextSize.setText(String.format("~%s %s [%d %s]", new DecimalFormat("##.##").format(fileSizeInMB), getContext().getString(R.string.megabyte), mMaxFileSize, getContext().getString(R.string.megabyte)));
+                } else {
+                    mTextSize.setText(String.format("~%s %s", new DecimalFormat("##.##").format(fileSizeInMB), getContext().getString(R.string.megabyte)));
+                }
             } else {
                 mTextSize.setText(String.format("%s%s", String.format("~%s %s! ", new DecimalFormat("##.##").format(fileSizeInMB), getContext().getString(R.string.megabyte)), getContext().getString(R.string.size_file_overflow)));
             }
@@ -949,6 +975,15 @@ public class K4LVideoTrimmer extends FrameLayout {
     public void setMaxDuration(int maxDuration) {
         mMaxDuration = maxDuration * 1000;
     }
+    /**
+     * Set the maximum file size of the trimmed video.
+     * The trimmer interface wont allow the user to trim the video until it is under this size
+     *
+     * @param fileSize the maximum file size the video should be in MB
+     */
+    public void setMaxFileSize(int fileSize){
+        mMaxFileSize = fileSize;
+    }
 
     /**
      * Sets the uri of the video to be trimmer
@@ -964,11 +999,16 @@ public class K4LVideoTrimmer extends FrameLayout {
 
             mOriginSizeFile = file.length();
             long fileSizeInKB = mOriginSizeFile / 1024;
+            canSaveVideo(fileSizeInKB / 1024f > mMaxFileSize);
 
             if (fileSizeInKB > 1000) {
                 long fileSizeInMB = fileSizeInKB / 1024;
                 if (fileSizeInMB < MAX_FILE_SIZE) {
-                    mTextSize.setText(String.format("~%s %s", new DecimalFormat("##.##").format(fileSizeInMB), getContext().getString(R.string.megabyte)));
+                    if(mMaxFileSize != 0 ) {
+                        mTextSize.setText(String.format("~%s %s [%d %s]", new DecimalFormat("##.##").format(fileSizeInMB), getContext().getString(R.string.megabyte), mMaxFileSize, getContext().getString(R.string.megabyte)));
+                    } else {
+                        mTextSize.setText(String.format("~%s %s", new DecimalFormat("##.##").format(fileSizeInMB), getContext().getString(R.string.megabyte)));
+                    }
                 } else {
                     mTextSize.setText(String.format("%s%s", String.format("~%s %s! ", new DecimalFormat("##.##").format(fileSizeInMB), getContext().getString(R.string.megabyte)), getContext().getString(R.string.size_file_overflow)));
                 }
@@ -980,7 +1020,11 @@ public class K4LVideoTrimmer extends FrameLayout {
                     return;
                 }
             } else {
-                mTextSize.setText(String.format("%s %s", fileSizeInKB, getContext().getString(R.string.kilobyte)));
+                if(mMaxFileSize != 0 ) {
+                    mTextSize.setText(String.format("~%s %s [%d %s]", fileSizeInKB, getContext().getString(R.string.kilobyte), mMaxFileSize, getContext().getString(R.string.megabyte)));
+                } else {
+                    mTextSize.setText(String.format("~%s %s", fileSizeInKB, getContext().getString(R.string.kilobyte)));
+                }
             }
         }
 
