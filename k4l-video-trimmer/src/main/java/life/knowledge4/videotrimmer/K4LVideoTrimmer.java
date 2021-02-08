@@ -505,6 +505,7 @@ public class K4LVideoTrimmer extends FrameLayout {
                                     TranscodeVideoUtils.startTranscode(mContext);
                                 } else {
                                     if (new File(destPath).length() > 30000) {
+                                        Toast.makeText(mContext, "File is larger than 30000", Toast.LENGTH_LONG).show();
                                         mOnTrimVideoListener.getResult(Uri.parse(destPath));
                                     } else {
                                         Toast.makeText(mContext, "File is less than 30000", Toast.LENGTH_LONG).show();
