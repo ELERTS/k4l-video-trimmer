@@ -96,6 +96,7 @@ public class K4LVideoTrimmer extends FrameLayout {
     private static final int SHOW_PROGRESS = 2;
     private static final int MAX_FILE_SIZE = 1012;
     private static final int MAX_FILE_SIZE_BEFORE_DECODE = 1512;
+    public static final String FILE_TOO_LARGE_ERROR = "File too large";
 
     private SeekBar mHolderTopView;
     private RangeSeekBarView mRangeSeekBarView;
@@ -438,6 +439,12 @@ public class K4LVideoTrimmer extends FrameLayout {
                 mOnTrimVideoListener.cancelAction();
             return;
         }
+        long fileSizeInKB = (long) ((mOriginSizeFile / 1024) * calcNewFileSizeRatio());
+        if(fileSizeInKB / 1024f > mMaxFileSize) {
+            if (mOnTrimVideoListener != null)
+                mOnTrimVideoListener.onError(FILE_TOO_LARGE_ERROR);
+            return;
+        }
 
         //notify that video trimming started
         if (mOnTrimVideoListener != null) {
@@ -446,8 +453,10 @@ public class K4LVideoTrimmer extends FrameLayout {
         }
 
         if (!needTrim && !needCompression) {
-            if (mOnTrimVideoListener != null)
+            if (mOnTrimVideoListener != null) {
                 copyFileToDest(destPath);
+                Toast.makeText(mContext, "Doesn't need trimming", Toast.LENGTH_LONG).show();
+            }
         } else {
             mPlayView.setVisibility(View.VISIBLE);
             mVideoView.pause();
@@ -498,14 +507,17 @@ public class K4LVideoTrimmer extends FrameLayout {
                                     if (new File(destPath).length() > 30000) {
                                         mOnTrimVideoListener.getResult(Uri.parse(destPath));
                                     } else {
+                                        Toast.makeText(mContext, "File is less than 30000", Toast.LENGTH_LONG).show();
                                         copyFile(new File(mSrc.getPath()), new File(destPath));
                                         mOnTrimVideoListener.getResult(Uri.parse(destPath));
                                     }
                                 }
                             } catch (Exception e) {
                                 try {
+                                    Toast.makeText(mContext, "Exception: "+e.getLocalizedMessage(), Toast.LENGTH_LONG).show();
                                     copyFile(new File(mSrc.getPath()), new File(destPath));
                                 } catch (IOException ignore) {
+                                    Toast.makeText(mContext, "Ignore: "+ignore.getLocalizedMessage(), Toast.LENGTH_LONG).show();
                                 }
                                 mOnTrimVideoListener.getResult(Uri.parse(destPath));
                             }
@@ -682,10 +694,6 @@ public class K4LVideoTrimmer extends FrameLayout {
 
         videoTimelineView.setProgress((float)mStartPosition / mDuration, (float) mEndPosition / mDuration);
 
-        //By default show compression for larger videos
-        if (compressionsCount > 1) {
-            qualityChooseView.setVisibility(VISIBLE);
-        }
         setTimeFrames();
         setTimeVideo(0);
 
@@ -704,6 +712,10 @@ public class K4LVideoTrimmer extends FrameLayout {
         }
         setDefaultVideoResolution(compressionsCount);
         qualityChooseView.setOriginalCompression(compressionsCount);
+        //By default show compression for larger videos
+        if (compressionsCount > 1) {
+            qualityChooseView.setVisibility(VISIBLE);
+        }
     }
 
     private void setSeekBarPosition() {
@@ -742,13 +754,13 @@ public class K4LVideoTrimmer extends FrameLayout {
         if(canSave){
             mTextSize.setTextColor(getContext().getResources().getColor(R.color.size_warning));
             saveButton.setTextColor(getContext().getResources().getColor(android.R.color.darker_gray));
-            saveButton.setEnabled(false);
-            saveButton.setClickable(false);
+//            saveButton.setEnabled(false);
+//            saveButton.setClickable(false);
         } else {
             mTextSize.setTextColor(getContext().getResources().getColor(android.R.color.white));
             saveButton.setTextColor(getContext().getResources().getColor(android.R.color.white));
-            saveButton.setEnabled(true);
-            saveButton.setClickable(true);
+//            saveButton.setEnabled(true);
+//            saveButton.setClickable(true);
         }
     }
 
