@@ -589,7 +589,7 @@ public class K4LVideoTrimmer extends FrameLayout {
 
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onMediaErrorEvent(MediaErrorEvent event) {
-        toast(mContext, "Exception Handler: MediaErrorEvent");
+        toast(mContext, "Exception Handler: "+event.message );
         exceptionHandler();
     }
 
