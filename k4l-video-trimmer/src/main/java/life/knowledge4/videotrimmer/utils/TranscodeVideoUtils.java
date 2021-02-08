@@ -359,11 +359,11 @@ public class TranscodeVideoUtils {
 
                 @Override
                 public void onError(Exception e) {
-                    EventBus.getDefault().post(new MediaErrorEvent());
+                    EventBus.getDefault().post(new MediaErrorEvent(e.getLocalizedMessage()));
                 }
             });
         } catch (Exception ignore) {
-            EventBus.getDefault().post(new MediaErrorEvent());
+            EventBus.getDefault().post(new MediaErrorEvent(ignore.getLocalizedMessage()));
         }
         stopTranscode();
     }
