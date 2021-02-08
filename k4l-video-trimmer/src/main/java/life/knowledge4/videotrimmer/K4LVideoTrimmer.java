@@ -28,6 +28,7 @@ import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.Environment;
 import android.os.Handler;
+import android.os.Looper;
 import android.os.Message;
 import android.util.AttributeSet;
 import android.view.GestureDetector;
@@ -455,7 +456,7 @@ public class K4LVideoTrimmer extends FrameLayout {
         if (!needTrim && !needCompression) {
             if (mOnTrimVideoListener != null) {
                 copyFileToDest(destPath);
-                Toast.makeText(mContext, "Doesn't need trimming", Toast.LENGTH_LONG).show();
+                toast(mContext, "Doesn't need trimming");
             }
         } else {
             mPlayView.setVisibility(View.VISIBLE);
@@ -505,20 +506,20 @@ public class K4LVideoTrimmer extends FrameLayout {
                                     TranscodeVideoUtils.startTranscode(mContext);
                                 } else {
                                     if (new File(destPath).length() > 30000) {
-                                        Toast.makeText(mContext, "File is larger than 30000", Toast.LENGTH_LONG).show();
+                                        toast(mContext, "File is larger than 30000");
                                         mOnTrimVideoListener.getResult(Uri.parse(destPath));
                                     } else {
-                                        Toast.makeText(mContext, "File is less than 30000", Toast.LENGTH_LONG).show();
+                                        toast(mContext, "File is less than 30000");
                                         copyFile(new File(mSrc.getPath()), new File(destPath));
                                         mOnTrimVideoListener.getResult(Uri.parse(destPath));
                                     }
                                 }
                             } catch (Exception e) {
                                 try {
-                                    Toast.makeText(mContext, "Exception: "+e.getLocalizedMessage(), Toast.LENGTH_LONG).show();
+                                    toast(mContext, "Exception: "+e.getLocalizedMessage());
                                     copyFile(new File(mSrc.getPath()), new File(destPath));
                                 } catch (IOException ignore) {
-                                    Toast.makeText(mContext, "Ignore: "+ignore.getLocalizedMessage(), Toast.LENGTH_LONG).show();
+                                    toast(mContext, "Ignore: "+ignore.getLocalizedMessage());
                                 }
                                 mOnTrimVideoListener.getResult(Uri.parse(destPath));
                             }
@@ -526,6 +527,15 @@ public class K4LVideoTrimmer extends FrameLayout {
                     }
             );
         }
+    }
+
+    public static void toast(Context ctx, String message){
+        new Handler(Looper.getMainLooper()).post(new Runnable() {
+            @Override
+            public void run() {
+                Toast.makeText(ctx, message, Toast.LENGTH_LONG).show();
+            }
+        });
     }
 
     public static void copyFile(File sourceFile, File destFile) throws IOException {
@@ -568,10 +578,10 @@ public class K4LVideoTrimmer extends FrameLayout {
         try {
             File file = removeSuffixFile(new File(getDestinationPath()), new File(getTranscodeDestinationPath()));
             Uri uri = Uri.fromFile(file);
-            Toast.makeText(mContext, "Saved", Toast.LENGTH_LONG).show();
+            toast(mContext, "Saved");
             mOnTrimVideoListener.getResult(uri);
         } catch (IOException ignore) {
-            Toast.makeText(mContext, "Ignore: "+ignore.getLocalizedMessage(), Toast.LENGTH_LONG).show();
+            toast(mContext, "Ignore: "+ignore.getLocalizedMessage());
             mOnTrimVideoListener.getResult(Uri.parse(getDestinationPath()));
         }
     }
@@ -588,7 +598,7 @@ public class K4LVideoTrimmer extends FrameLayout {
 
     private void exceptionHandler() {
         if (new File(getDestinationPath()).length() > 30000) {
-            Toast.makeText(mContext, "Exception Handler: over 30000", Toast.LENGTH_LONG).show();
+            toast(mContext, "Exception Handler: over 30000");
             mOnTrimVideoListener.getResult(Uri.parse(getDestinationPath()));
         } else {
             BackgroundExecutor.execute(
@@ -596,7 +606,7 @@ public class K4LVideoTrimmer extends FrameLayout {
                         @Override
                         public void execute() {
                             try {
-                                Toast.makeText(mContext, "Exception Handler: copy original", Toast.LENGTH_LONG).show();
+                                toast(mContext, "Exception Handler: copy original");
                                 copyFile(new File(mSrc.getPath()), new File(getDestinationPath()));
                                 mOnTrimVideoListener.getResult(Uri.parse(getDestinationPath()));
                             } catch (IOException e) {
@@ -1030,7 +1040,7 @@ public class K4LVideoTrimmer extends FrameLayout {
                     mTextSize.setText(String.format("%s%s", String.format("~%s %s! ", new DecimalFormat("##.##").format(fileSizeInMB), getContext().getString(R.string.megabyte)), getContext().getString(R.string.size_file_overflow)));
                 }
                 if (fileSizeInMB > MAX_FILE_SIZE_BEFORE_DECODE) {
-                    Toast.makeText(mContext, R.string.size_file_overflow_original, Toast.LENGTH_SHORT).show();
+                    toast(mContext, mContext.getResources().getString(R.string.size_file_overflow_original));
                     if (mOnTrimVideoListener != null) {
                         mOnTrimVideoListener.cancelAction();
                     }
