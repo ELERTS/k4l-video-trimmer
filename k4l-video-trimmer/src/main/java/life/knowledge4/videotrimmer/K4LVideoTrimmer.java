@@ -567,8 +567,10 @@ public class K4LVideoTrimmer extends FrameLayout {
         try {
             File file = removeSuffixFile(new File(getDestinationPath()), new File(getTranscodeDestinationPath()));
             Uri uri = Uri.fromFile(file);
+            Toast.makeText(mContext, "Saved", Toast.LENGTH_LONG).show();
             mOnTrimVideoListener.getResult(uri);
         } catch (IOException ignore) {
+            Toast.makeText(mContext, "Ignore: "+ignore.getLocalizedMessage(), Toast.LENGTH_LONG).show();
             mOnTrimVideoListener.getResult(Uri.parse(getDestinationPath()));
         }
     }
@@ -585,6 +587,7 @@ public class K4LVideoTrimmer extends FrameLayout {
 
     private void exceptionHandler() {
         if (new File(getDestinationPath()).length() > 30000) {
+            Toast.makeText(mContext, "Exception Handler: over 30000", Toast.LENGTH_LONG).show();
             mOnTrimVideoListener.getResult(Uri.parse(getDestinationPath()));
         } else {
             BackgroundExecutor.execute(
@@ -592,6 +595,7 @@ public class K4LVideoTrimmer extends FrameLayout {
                         @Override
                         public void execute() {
                             try {
+                                Toast.makeText(mContext, "Exception Handler: copy original", Toast.LENGTH_LONG).show();
                                 copyFile(new File(mSrc.getPath()), new File(getDestinationPath()));
                                 mOnTrimVideoListener.getResult(Uri.parse(getDestinationPath()));
                             } catch (IOException e) {
