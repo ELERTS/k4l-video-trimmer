@@ -228,6 +228,7 @@ public class K4LVideoTrimmer extends FrameLayout {
             @Override
             public boolean onError(Exception e) {
                 if (mOnTrimVideoListener != null)
+                    toast(mContext, "Exception Handler: "+e.getLocalizedMessage());
                     exceptionHandler();
                 return false;
             }
@@ -588,6 +589,7 @@ public class K4LVideoTrimmer extends FrameLayout {
 
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onMediaErrorEvent(MediaErrorEvent event) {
+        toast(mContext, "Exception Handler: MediaErrorEvent");
         exceptionHandler();
     }
 
@@ -598,7 +600,7 @@ public class K4LVideoTrimmer extends FrameLayout {
 
     private void exceptionHandler() {
         if (new File(getDestinationPath()).length() > 30000) {
-            toast(mContext, "Exception Handler: over 30000");
+//            toast(mContext, "Exception Handler: over 30000");
             mOnTrimVideoListener.getResult(Uri.parse(getDestinationPath()));
         } else {
             BackgroundExecutor.execute(
@@ -606,7 +608,7 @@ public class K4LVideoTrimmer extends FrameLayout {
                         @Override
                         public void execute() {
                             try {
-                                toast(mContext, "Exception Handler: copy original");
+//                                toast(mContext, "Exception Handler: copy original");
                                 copyFile(new File(mSrc.getPath()), new File(getDestinationPath()));
                                 mOnTrimVideoListener.getResult(Uri.parse(getDestinationPath()));
                             } catch (IOException e) {
