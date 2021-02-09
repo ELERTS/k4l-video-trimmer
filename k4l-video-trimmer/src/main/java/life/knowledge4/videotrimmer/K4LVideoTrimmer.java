@@ -98,6 +98,7 @@ public class K4LVideoTrimmer extends FrameLayout {
     private static final int MAX_FILE_SIZE = 1012;
     private static final int MAX_FILE_SIZE_BEFORE_DECODE = 1512;
     public static final String FILE_TOO_LARGE_ERROR = "File too large";
+    public static final String MEDIA_CODEC_IN_USE = "0xffffec77";
 
     private SeekBar mHolderTopView;
     private RangeSeekBarView mRangeSeekBarView;
@@ -531,12 +532,12 @@ public class K4LVideoTrimmer extends FrameLayout {
     }
 
     public static void toast(Context ctx, String message){
-        new Handler(Looper.getMainLooper()).post(new Runnable() {
-            @Override
-            public void run() {
-                Toast.makeText(ctx, message, Toast.LENGTH_LONG).show();
-            }
-        });
+//        new Handler(Looper.getMainLooper()).post(new Runnable() {
+//            @Override
+//            public void run() {
+//                Toast.makeText(ctx, message, Toast.LENGTH_LONG).show();
+//            }
+//        });
     }
 
     public static void copyFile(File sourceFile, File destFile) throws IOException {
@@ -590,7 +591,12 @@ public class K4LVideoTrimmer extends FrameLayout {
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onMediaErrorEvent(MediaErrorEvent event) {
         toast(mContext, "Exception Handler: "+event.message );
-        exceptionHandler();
+        //Media Codec is already open. error 0xffffec77
+        if(event != null && event.message!=null && event.message.equalsIgnoreCase(MEDIA_CODEC_IN_USE) && mOnTrimVideoListener!=null){
+            mOnTrimVideoListener.onError(event.message);
+        } else {
+            exceptionHandler();
+        }
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)
